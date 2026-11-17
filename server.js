@@ -57,6 +57,9 @@ function darken(hex, factor = 0.6) {
 const PRIMARY_COLOR = readColor('PRIMARY_COLOR') || DEFAULT_PRIMARY;
 const PRIMARY_COLOR_DARK = readColor('PRIMARY_COLOR_DARK')
     || (PRIMARY_COLOR === DEFAULT_PRIMARY ? DEFAULT_PRIMARY_DARK : darken(PRIMARY_COLOR));
+// Page background gradient only; defaults to the primary colours
+const BG_COLOR_START = readColor('BG_COLOR_START') || PRIMARY_COLOR;
+const BG_COLOR_END = readColor('BG_COLOR_END') || PRIMARY_COLOR_DARK;
 
 // FAVICON_PATH: absolute, or relative to this folder. Falls back to public/favicon.ico.
 let FAVICON_PATH = path.join(__dirname, 'public', 'favicon.ico');
@@ -71,7 +74,8 @@ app.use(express.json());
 
 app.get('/theme.css', (req, res) => {
     res.type('text/css').set('Cache-Control', 'no-cache')
-        .send(`:root { --primary: ${PRIMARY_COLOR}; --primary-dark: ${PRIMARY_COLOR_DARK}; }\n`);
+        .send(`:root { --primary: ${PRIMARY_COLOR}; --primary-dark: ${PRIMARY_COLOR_DARK}; `
+            + `--bg-start: ${BG_COLOR_START}; --bg-end: ${BG_COLOR_END}; }\n`);
 });
 
 app.get('/favicon.ico', (req, res) => {
@@ -453,6 +457,7 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`📁 Reports path: ${REPORTS_BASE_PATH}`);
     console.log(`🏷️  Folder prefix: ${FOLDER_PREFIX}`);
     console.log(`🎨 Colours:      ${PRIMARY_COLOR} / ${PRIMARY_COLOR_DARK}`);
+    console.log(`🌈 Background:   ${BG_COLOR_START} → ${BG_COLOR_END}`);
     console.log(`🖼️  Favicon:      ${FAVICON_PATH}`);
     console.log(`\n🌐 Server running on:`);
     console.log(`   Local:   http://localhost:${PORT}`);

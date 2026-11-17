@@ -31,9 +31,13 @@ REPORTS_BASE_PATH=D:\Proiecte\Portal\reports
 PORT=3000
 PROJECT_NAME=Playwright Report Viewer
 FOLDER_PREFIX=playwright-report-
-# Temă: culoarea principală (fundal + butoane); nuanța închisă se calculează dacă lipsește
-PRIMARY_COLOR=#1d8187
-PRIMARY_COLOR_DARK=#045a63
+# Temă: culoarea principală (butoane, accente); nuanța închisă se calculează dacă lipsește
+# Culorile se pun între ghilimele - altfel `#` e tratat ca început de comentariu
+PRIMARY_COLOR='#1d8187'
+PRIMARY_COLOR_DARK='#045a63'
+# Gradient fundal (implicit: PRIMARY_COLOR -> PRIMARY_COLOR_DARK)
+BG_COLOR_START='#1d8187'
+BG_COLOR_END='#045a63'
 # Favicon: cale absolută sau relativă la folderul viewer-ului (implicit public\favicon.ico)
 FAVICON_PATH=favicons\proiect.ico
 ```
@@ -48,7 +52,9 @@ Creează câte un fișier de configurare pentru fiecare proiect, cu port diferit
 REPORTS_BASE_PATH=D:\Proiecte\Magazin\reports
 PORT=3001
 PROJECT_NAME=Magazin Report Viewer
-PRIMARY_COLOR=#7b2cbf
+PRIMARY_COLOR='#7b2cbf'
+BG_COLOR_START='#7b2cbf'
+BG_COLOR_END='#3a0ca3'
 FAVICON_PATH=favicons\magazin.ico
 ```
 
