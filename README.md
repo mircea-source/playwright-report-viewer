@@ -26,8 +26,40 @@ npm install
 Editează fișierul `.env` și setează calea către directorul cu rapoarte:
 
 ```env
-REPORTS_BASE_PATH=<unitate_locala>:\<calea_catre_director_rapoarte>
+REPORTS_BASE_PATH=D:\Proiecte\Portal\reports
+# Opționale (valori implicite)
+PORT=3000
+PROJECT_NAME=Playwright Report Viewer
+FOLDER_PREFIX=playwright-report-
+# Temă: culoarea principală (fundal + butoane); nuanța închisă se calculează dacă lipsește
+PRIMARY_COLOR=#1d8187
+PRIMARY_COLOR_DARK=#045a63
+# Favicon: cale absolută sau relativă la folderul viewer-ului (implicit public\favicon.ico)
+FAVICON_PATH=favicons\proiect.ico
 ```
+
+Vezi și `.env.example`.
+
+### Mai multe proiecte (câte o instanță pe proiect)
+
+Creează câte un fișier de configurare pentru fiecare proiect, cu port diferit, de ex. `.env.magazin`:
+
+```env
+REPORTS_BASE_PATH=D:\Proiecte\Magazin\reports
+PORT=3001
+PROJECT_NAME=Magazin Report Viewer
+PRIMARY_COLOR=#7b2cbf
+FAVICON_PATH=favicons\magazin.ico
+```
+
+Pornește instanța cu:
+
+```bash
+node server.js --env .env.magazin
+# sau: start-server.bat --env .env.magazin
+```
+
+Fișierele `.env.*` sunt în `.gitignore` (căile sunt specifice fiecărui calculator).
 
 ### 3. Pornire server
 
@@ -49,9 +81,13 @@ Sau dublu-click pe **`start-server.bat`**.
 ## 📱 Acces din Rețeaua Locală
 
 ```
-🎭 Playwright Report Viewer Server
+🎭 Playwright Report Viewer
 =====================================
-📁 Reports path: E:\GIT Repo\CETA\reports
+⚙️  Config file:  D:\Tools\playwright-report-viewer\.env
+📁 Reports path: D:\Proiecte\Portal\reports
+🏷️  Folder prefix: playwright-report-
+🎨 Colours:      #1d8187 / #045a63
+🖼️  Favicon:      D:\Tools\playwright-report-viewer\public\favicon.ico
 
 🌐 Server running on:
    Local:   http://localhost:3000
@@ -79,7 +115,7 @@ Când selectezi o lună din filtrul **Luna**, apare automat un grafic stacked-ba
 ## 📂 Structura Rapoarte Așteptată
 
 ```
-<unitate_locala>:\<calea_catre_director_rapoarte>\
+D:\Proiecte\Portal\reports\
 ├── playwright-report-2026-01\
 │   ├── playwright-report-2026-01-15-EN-STAGE\
 │   │   └── index.html
@@ -92,6 +128,10 @@ Când selectezi o lună din filtrul **Luna**, apare automat un grafic stacked-ba
 │   └── playwright-report-2026-02-02-EN-DEV-nop-\
 │       └── index.html
 ```
+
+Sunt acceptate și rapoarte puse direct în director, fără folder de lună
+(ex. `reports\playwright-report-2026-11-17-Stage-GA\index.html`). Luna se deduce din numele
+folderului (`<prefix>YYYY-MM-DD-...`) sau, dacă numele nu conține o dată validă, din `startTime` din `report.json`.
 
 Rapoartele pot conține un singur `index.html` (toate datele embedded ca ZIP în base64) sau fișiere suplimentare (traces, screenshots, videoclipuri).
 
@@ -131,9 +171,9 @@ playwright-report-viewer/
 
 ### Port 3000 ocupat?
 
-Editează `server.js`:
-```javascript
-const PORT = 3001; // sau alt port liber
+Setează alt port în fișierul de configurare (`.env` sau cel dat cu `--env`):
+```env
+PORT=3001
 ```
 
 ### Nu găsește rapoarte?

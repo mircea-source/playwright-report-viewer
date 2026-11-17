@@ -4,15 +4,82 @@ const path = require('path');
 const os = require('os');
 const zlib = require('zlib');
 
-require('dotenv').config();
+// Config file can be chosen per project: `node server.js --env .env.proiectB`
+// (defaults to .env). This lets several instances run side by side, one per project.
+const envArgIndex = process.argv.indexOf('--env');
+const ENV_FILE = envArgIndex !== -1 && process.argv[envArgIndex + 1]
+    ? path.resolve(process.argv[envArgIndex + 1])
+    : path.resolve(__dirname, '.env');
+
+if (!fs.existsSync(ENV_FILE)) {
+    console.error(`❌ Config file not found: ${ENV_FILE}`);
+    process.exit(1);
+}
+require('dotenv').config({ path: ENV_FILE, quiet: true });
 
 const app = express();
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT, 10) || 3000;
+const PROJECT_NAME = process.env.PROJECT_NAME || 'Playwright Report Viewer';
+const FOLDER_PREFIX = process.env.FOLDER_PREFIX || 'playwright-report-';
 
 const REPORTS_BASE_PATH = process.env.REPORTS_BASE_PATH;
 
+if (!REPORTS_BASE_PATH || !fs.existsSync(REPORTS_BASE_PATH)) {
+    console.error(`❌ REPORTS_BASE_PATH is missing or does not exist: ${REPORTS_BASE_PATH || '(not set)'}`);
+    console.error(`   Check ${ENV_FILE}`);
+    process.exit(1);
+}
+
+// --- Per-project theme: primary colour + favicon -------------------------------------------
+const DEFAULT_PRIMARY = '#1d8187';
+const DEFAULT_PRIMARY_DARK = '#045a63';
+const HEX_COLOR_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+function readColor(name) {
+    const value = (process.env[name] || '').trim();
+    if (!value) return null;
+    if (!HEX_COLOR_RE.test(value)) {
+        console.warn(`⚠️  ${name}="${value}" is not a hex colour (#rgb or #rrggbb) - ignored`);
+        return null;
+    }
+    return value;
+}
+
+// Darker shade used for the background gradient end and button hover
+function darken(hex, factor = 0.6) {
+    let h = hex.slice(1);
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    return '#' + [0, 2, 4]
+        .map(i => Math.round(parseInt(h.slice(i, i + 2), 16) * factor).toString(16).padStart(2, '0'))
+        .join('');
+}
+
+const PRIMARY_COLOR = readColor('PRIMARY_COLOR') || DEFAULT_PRIMARY;
+const PRIMARY_COLOR_DARK = readColor('PRIMARY_COLOR_DARK')
+    || (PRIMARY_COLOR === DEFAULT_PRIMARY ? DEFAULT_PRIMARY_DARK : darken(PRIMARY_COLOR));
+
+// FAVICON_PATH: absolute, or relative to this folder. Falls back to public/favicon.ico.
+let FAVICON_PATH = path.join(__dirname, 'public', 'favicon.ico');
+if (process.env.FAVICON_PATH) {
+    const custom = path.resolve(__dirname, process.env.FAVICON_PATH);
+    if (fs.existsSync(custom)) FAVICON_PATH = custom;
+    else console.warn(`⚠️  FAVICON_PATH not found: ${custom} - using default favicon`);
+}
+
 // Middleware
 app.use(express.json());
+
+app.get('/theme.css', (req, res) => {
+    res.type('text/css').set('Cache-Control', 'no-cache')
+        .send(`:root { --primary: ${PRIMARY_COLOR}; --primary-dark: ${PRIMARY_COLOR_DARK}; }\n`);
+});
+
+app.get('/favicon.ico', (req, res) => {
+    // public/favicon.ico is git-ignored, so a fresh clone may have no icon at all
+    if (!fs.existsSync(FAVICON_PATH)) return res.status(204).end();
+    res.set('Cache-Control', 'no-cache').sendFile(FAVICON_PATH);
+});
+
 app.use(express.static('public'));
 // Serve every report folder (index.html + traces/screenshots/videos) under /reports/
 // Relative asset URLs in the Playwright HTML report resolve automatically this way.
@@ -42,46 +109,74 @@ function getReportThumbnail(reportPath) {
     return null;
 }
 
+// Month group (<FOLDER_PREFIX>YYYY-MM) for a report stored directly in the base path.
+// Uses the date in the folder name (<FOLDER_PREFIX>YYYY-MM-DD-...), otherwise the run's
+// startTime from report.json, so a mistyped folder name still lands in the right month.
+const escapeRegExp = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const FLAT_DATE_RE = new RegExp(`^${escapeRegExp(FOLDER_PREFIX)}(\\d{4})-(\\d{2})-\\d{2}`);
+const flatMonthCache = new Map();
+
+function getFlatReportMonth(folderName, reportPath) {
+    const match = folderName.match(FLAT_DATE_RE);
+    if (match) return `${FOLDER_PREFIX}${match[1]}-${match[2]}`;
+
+    if (!flatMonthCache.has(reportPath)) {
+        let month = `${FOLDER_PREFIX}unknown`;
+        const startTime = getReportStats(reportPath)?.startTime;
+        if (startTime) {
+            const d = new Date(startTime);
+            month = `${FOLDER_PREFIX}${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        }
+        flatMonthCache.set(reportPath, month);
+    }
+    return flatMonthCache.get(reportPath);
+}
+
 /**
  * Scans the reports directory and returns all report folders
  */
 function scanReportsDirectory(basePath) {
     const reports = [];
-    
+
+    const addReport = (reportPath, month) => {
+        const thumbnail = getReportThumbnail(reportPath);
+        const relativePath = path.relative(basePath, reportPath).replace(/\\/g, '/');
+        reports.push({
+            month,
+            name: path.basename(reportPath),
+            path: reportPath,
+            thumbnail,
+            thumbnailUrl: thumbnail ? `/reports/${relativePath}/${thumbnail}` : null
+        });
+    };
+
     try {
-        // Get all month folders (playwright-report-YYYY-MM)
-        const monthFolders = fs.readdirSync(basePath)
+        // Top-level folders starting with FOLDER_PREFIX are either:
+        //  - month folders (<FOLDER_PREFIX>YYYY-MM) containing report folders, or
+        //  - report folders placed directly in the base path (they contain index.html).
+        const topFolders = fs.readdirSync(basePath)
             .filter(item => {
                 const fullPath = path.join(basePath, item);
-                return fs.statSync(fullPath).isDirectory() && item.startsWith('playwright-report-');
+                return fs.statSync(fullPath).isDirectory() && item.startsWith(FOLDER_PREFIX);
             })
             .sort();
 
-        // For each month folder, get all report folders inside
-        monthFolders.forEach(monthFolder => {
-            const monthPath = path.join(basePath, monthFolder);
-            
-            try {
-                const reportFolders = fs.readdirSync(monthPath)
-                    .filter(item => {
-                        const fullPath = path.join(monthPath, item);
-                        return fs.statSync(fullPath).isDirectory();
-                    });
+        topFolders.forEach(topFolder => {
+            const topPath = path.join(basePath, topFolder);
 
-                reportFolders.forEach(reportFolder => {
-                    const reportPath = path.join(basePath, monthFolder, reportFolder);
-                    const thumbnail = getReportThumbnail(reportPath);
-                    const relativePath = path.relative(basePath, reportPath).replace(/\\/g, '/');
-                    reports.push({
-                        month: monthFolder,
-                        name: reportFolder,
-                        path: reportPath,
-                        thumbnail,
-                        thumbnailUrl: thumbnail ? `/reports/${relativePath}/${thumbnail}` : null
-                    });
-                });
+            // Flat layout: the folder is itself a report
+            if (fs.existsSync(path.join(topPath, 'index.html'))) {
+                addReport(topPath, getFlatReportMonth(topFolder, topPath));
+                return;
+            }
+
+            // Month layout: every subfolder is a report
+            try {
+                fs.readdirSync(topPath)
+                    .filter(item => fs.statSync(path.join(topPath, item)).isDirectory())
+                    .forEach(reportFolder => addReport(path.join(topPath, reportFolder), topFolder));
             } catch (err) {
-                console.error(`Error reading month folder ${monthFolder}:`, err.message);
+                console.error(`Error reading month folder ${topFolder}:`, err.message);
             }
         });
 
@@ -294,6 +389,8 @@ app.get('/api/config', (req, res) => {
     res.json({
         success: true,
         config: {
+            projectName: PROJECT_NAME,
+            folderPrefix: FOLDER_PREFIX,
             reportsPath: REPORTS_BASE_PATH,
             port: PORT,
             localUrl: `http://localhost:${PORT}`,
@@ -350,9 +447,13 @@ app.get('/api/stats', (req, res) => {
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
     const networkInterfaces = os.networkInterfaces();
-    console.log('\n🎭 Playwright Report Viewer Server');
+    console.log(`\n🎭 ${PROJECT_NAME}`);
     console.log('=====================================');
+    console.log(`⚙️  Config file:  ${ENV_FILE}`);
     console.log(`📁 Reports path: ${REPORTS_BASE_PATH}`);
+    console.log(`🏷️  Folder prefix: ${FOLDER_PREFIX}`);
+    console.log(`🎨 Colours:      ${PRIMARY_COLOR} / ${PRIMARY_COLOR_DARK}`);
+    console.log(`🖼️  Favicon:      ${FAVICON_PATH}`);
     console.log(`\n🌐 Server running on:`);
     console.log(`   Local:   http://localhost:${PORT}`);
     

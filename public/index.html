@@ -5,7 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Playwright Report Viewer - Web Edition</title>
+    <link rel="icon" href="/favicon.ico">
     <style>
+        /* Default theme; overridden per project by /theme.css (PRIMARY_COLOR / PRIMARY_COLOR_DARK) */
+        :root {
+            --primary: #1d8187;
+            --primary-dark: #045a63;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -14,7 +21,7 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #1d8187 0%, #045a63 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
             min-height: 100vh;
             padding: 20px;
         }
@@ -63,7 +70,7 @@
 
         label {
             font-weight: 600;
-            color: #045a63;
+            color: var(--primary-dark);
         }
 
         input,
@@ -78,11 +85,11 @@
         input:focus,
         select:focus {
             outline: none;
-            border-color: #045a63;
+            border-color: var(--primary-dark);
         }
 
         button {
-            background: #1d8187;
+            background: var(--primary);
             color: white;
             border: none;
             cursor: pointer;
@@ -91,7 +98,7 @@
         }
 
         button:hover {
-            background: #045a63;
+            background: var(--primary-dark);
         }
 
         button:disabled {
@@ -144,7 +151,7 @@
 
         .report-month {
             display: inline-block;
-            background: #1d8187;
+            background: var(--primary);
             color: white;
             padding: 5px 10px;
             border-radius: 5px;
@@ -196,7 +203,7 @@
         .stat-value {
             font-size: 24px;
             font-weight: 700;
-            color: #1d8187;
+            color: var(--primary);
         }
 
         .stat-label {
@@ -365,13 +372,15 @@
             color: #6c757d;
         }
     </style>
+    <!-- Loaded after the inline styles so the project colours win -->
+    <link rel="stylesheet" href="/theme.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
     <div class="container">
         <header>
-            <h1>🎭 Playwright Report Viewer - Web Edition</h1>
+            <h1 id="pageTitle">🎭 Playwright Report Viewer - Web Edition</h1>
             <p class="subtitle">Accesează rapoartele de pe orice dispozitiv din rețeaua locală</p>
         </header>
 
@@ -446,12 +455,14 @@
         let filteredReports = [];
         let openReports = [];
         let statsChart = null;
+        // Per-project settings, filled from /api/config (see .env: PROJECT_NAME, FOLDER_PREFIX)
+        let appConfig = { projectName: null, folderPrefix: 'playwright-report-' };
 
-        // Load reports on page load
-        window.addEventListener('DOMContentLoaded', () => {
+        // Load reports on page load (config first: month filter and chart labels depend on the prefix)
+        window.addEventListener('DOMContentLoaded', async () => {
+            await loadConfig();
             loadReports();
             loadOpenReports();
-            loadNetworkInfo();
 
             // Refresh open reports every 30 seconds
             setInterval(loadOpenReports, 30000);
@@ -491,12 +502,20 @@
             }
         }
 
-        async function loadNetworkInfo() {
+        async function loadConfig() {
             try {
                 const response = await fetch('/api/config');
                 const data = await response.json();
+                if (!data.success) return;
 
-                if (data.success && data.config.networkUrls.length > 0) {
+                appConfig = { ...appConfig, ...data.config };
+
+                if (appConfig.projectName) {
+                    document.title = appConfig.projectName;
+                    document.getElementById('pageTitle').textContent = `🎭 ${appConfig.projectName}`;
+                }
+
+                if (data.config.networkUrls.length > 0) {
                     const infoDiv = document.getElementById('networkInfo');
                     const urlsDiv = document.getElementById('networkUrls');
 
@@ -507,7 +526,7 @@
                     infoDiv.style.display = 'block';
                 }
             } catch (error) {
-                console.error('Error loading network info:', error);
+                console.error('Error loading config:', error);
             }
         }
 
@@ -635,9 +654,9 @@
             const uniqueMonths = [...new Set(allReports.map(r => r.month))].sort().reverse();
             const select = document.getElementById('monthFilter');
 
-            // Get current month in format playwright-report-YYYY-MM
+            // Get current month in format <folderPrefix>YYYY-MM
             const now = new Date();
-            const currentMonth = `playwright-report-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const currentMonth = `${appConfig.folderPrefix}${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
             select.innerHTML = '<option value="">Toate lunile</option>' +
                 uniqueMonths.map(month => {
@@ -671,7 +690,7 @@
                         <div class="open-report-name">${report.name}</div>
                         <div class="open-report-meta">
                             <span>Deschis la ${report.timestamp}</span>
-                            ${report.url ? `<span> | <a href="${report.url}" target="_blank" style="color: #1d8187; font-weight: 600;">📊 Vezi raportul</a></span>` : ''}
+                            ${report.url ? `<span> | <a href="${report.url}" target="_blank" style="color: var(--primary); font-weight: 600;">📊 Vezi raportul</a></span>` : ''}
                         </div>
                     </div>
                     <button class="btn-close-port" onclick="closeReport(${index})">✕ Închide</button>
@@ -731,8 +750,10 @@
                 const min = String(d.getMinutes()).padStart(2, '0');
                 return `${day}/${mon} ${hr}:${min}`;
             }
-            // Fallback: strip leading "playwright-report-YYYY-MM-DD-" prefix if present
-            return stat.name.replace(/^playwright-report-\d{4}-\d{2}-\d{2}-?/, '').substring(0, 22) || stat.name.substring(0, 22);
+            // Fallback: strip leading "<folderPrefix>YYYY-MM-DD-" prefix if present
+            const prefix = appConfig.folderPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const label = stat.name.replace(new RegExp(`^${prefix}\\d{4}-\\d{2}-\\d{2}-?`), '');
+            return label.substring(0, 22) || stat.name.substring(0, 22);
         }
 
         function renderChart(stats) {

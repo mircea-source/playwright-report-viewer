@@ -14,9 +14,9 @@ if not exist "node_modules\" (
 
 echo 🚀 Starting Web Server...
 echo.
-echo Server will run on http://localhost:3000
+echo Port and reports path: see the config file (.env or the one passed with --env)
 echo.
 echo Press Ctrl+C to stop the server
 echo.
 
-node server.js
+node server.js %*

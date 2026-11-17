@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 # Generated HTML file (will be created by running the generator)
 playwright-report-viewer-enhanced.html
 
@@ -27,3 +29,10 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# BAT files
+start-*.bat
+!start-server.bat
+
+#ICO files
+*.ico
